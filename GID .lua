@@ -1,5 +1,5 @@
 -- ============================================================
--- GIDRAXIOD - АИМБОТ НЕ ВИДИТ ЧЕРЕЗ СТЕНЫ
+-- GIDRAXIOD - С FPS BOOST (СЧЁТЧИК В ЛЕВОМ ВЕРХНЕМ УГЛУ)
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -8,6 +8,7 @@ local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local CoreGui = game:GetService("CoreGui")
+local Stats = game:GetService("Stats")
 local localPlayer = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
 
@@ -15,7 +16,7 @@ local camera = Workspace.CurrentCamera
 local aimEnabled = false
 local triggerEnabled = false
 local espEnabled = false
-local nightVisionEnabled = false
+local fpsBoostEnabled = false
 local noclipEnabled = false
 local fovRadius = 120
 local smoothness = 0.85
@@ -23,6 +24,7 @@ local aimTarget = nil
 local maxFOV = 500
 local aimPart = "Head"
 local lastTriggerTime = 0
+local MAX_AIM_DISTANCE = 60
 
 -- ====== ESP ======
 local espObjects = {}
@@ -34,14 +36,8 @@ local rescanTimer = 0
 local RESCAN_INTERVAL = 2.5
 local playerConnections = {}
 
--- ====== NIGHTVISION ======
-local nvConn = nil
-local savedBrightness = Lighting.Brightness
-local savedAmbient = Lighting.Ambient
-local savedOutdoorAmbient = Lighting.OutdoorAmbient
-local savedClockTime = Lighting.ClockTime
-local savedFogStart = Lighting.FogStart
-local savedFogEnd = Lighting.FogEnd
+-- ====== FPS BOOST ======
+local originalMaterials = {}
 local savedGlobalShadows = Lighting.GlobalShadows
 
 -- ====== ТЕМЫ ======
@@ -80,7 +76,7 @@ local function getThemeColors()
     return currentColor, currentGlow, currentDim
 end
 
--- ====== GUI ======
+-- ====== GUI (МЕНЮ) ======
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "GIDRAX_Menu"
 screenGui.ResetOnSpawn = false
@@ -244,8 +240,8 @@ local function createButton(text, getState, setState)
         btn.BorderColor3 = newState and currentGlow or currentColor
         btn.BackgroundColor3 = newState and Color3.fromRGB(60, 40, 80) or Color3.fromRGB(30, 30, 40)
         updateUITheme()
-        if text == "Night Vision" then
-            if newState then startNV() else stopNV() end
+        if text == "FPS Boost" then
+            toggleFPSBoost(newState)
         end
     end)
     return btn
@@ -361,14 +357,15 @@ local function createSlider(labelText, getValue, setValue, min, max, format)
     return container
 end
 
+-- ====== КНОПКИ МЕНЮ ======
 local espBtn = createButton("ESP", function() return espEnabled end, function(v)
     espEnabled = v
     if v then startESP() else stopESP() end
 end)
 
-local nvBtn = createButton("Night Vision", function() return nightVisionEnabled end, function(v)
-    nightVisionEnabled = v
-    if v then startNV() else stopNV() end
+local fpsBtn = createButton("FPS Boost", function() return fpsBoostEnabled end, function(v)
+    fpsBoostEnabled = v
+    toggleFPSBoost(v)
 end)
 
 local aimBtn = createButton("AimBot", function() return aimEnabled end, function(v)
@@ -390,7 +387,7 @@ end)
 
 local noclipBtn = createButton("Noclip", function() return noclipEnabled end, function(v)
     noclipEnabled = v
-    if v then startNoclip() else stopNoclip() end
+    if not v then stopNoclip() else startNoclip() end
 end)
 
 local fovSlider = createSlider("FOV", function() return fovRadius end, function(v) fovRadius = math.floor(v) end, 30, 500, function(v) return tostring(math.floor(v)) end)
@@ -507,6 +504,7 @@ closeBtn.MouseButton1Click:Connect(function()
     mainFrame.Visible = false
 end)
 
+-- ОТКРЫТИЕ МЕНЮ ПО G И INSERT
 toggleButton.MouseButton1Click:Connect(function()
     mainFrame.Visible = not mainFrame.Visible
     getThemeColors()
@@ -515,6 +513,11 @@ end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.Insert then
+        mainFrame.Visible = not mainFrame.Visible
+        getThemeColors()
+        updateUITheme()
+    end
     if input.KeyCode == Enum.KeyCode.P then
         aimEnabled = not aimEnabled
         aimBtn.Text = "◈ AimBot" .. (aimEnabled and " [ON]" or " [OFF]")
@@ -531,23 +534,74 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
-local rainbowLoop = RunService.Heartbeat:Connect(function(deltaTime)
-    rainbowTimer = rainbowTimer + deltaTime
-    if rainbowTimer >= 0.08 then
-        rainbowTimer = 0
-        local theme = themes[currentThemeIndex]
-        if theme and theme.name == "Rainbow" then
-            getThemeColors()
-            updateUITheme()
-        end
+-- ====== СЧЁТЧИК FPS И PING (ЛЕВЫЙ ВЕРХНИЙ УГОЛ) ======
+local statsGui = Instance.new("ScreenGui")
+statsGui.Name = "StatsDisplay"
+statsGui.ResetOnSpawn = false
+statsGui.IgnoreGuiInset = true
+statsGui.DisplayOrder = 999998
+statsGui.Parent = CoreGui
+
+local statsFrame = Instance.new("Frame")
+statsFrame.Size = UDim2.new(0, 140, 0, 45)
+statsFrame.Position = UDim2.new(0, 10, 0, 10)
+statsFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+statsFrame.BackgroundTransparency = 0.5
+statsFrame.BorderSizePixel = 1
+statsFrame.BorderColor3 = Color3.fromRGB(180, 80, 255)
+statsFrame.Parent = statsGui
+
+local statsCorner = Instance.new("UICorner")
+statsCorner.CornerRadius = UDim.new(0, 6)
+statsCorner.Parent = statsFrame
+
+local fpsLabel = Instance.new("TextLabel")
+fpsLabel.Size = UDim2.new(1, 0, 0.5, 0)
+fpsLabel.Position = UDim2.new(0, 5, 0, 0)
+fpsLabel.BackgroundTransparency = 1
+fpsLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+fpsLabel.Text = "FPS: 0"
+fpsLabel.TextSize = 14
+fpsLabel.Font = Enum.Font.GothamBold
+fpsLabel.TextXAlignment = Enum.TextXAlignment.Left
+fpsLabel.Parent = statsFrame
+
+local pingLabel = Instance.new("TextLabel")
+pingLabel.Size = UDim2.new(1, 0, 0.5, 0)
+pingLabel.Position = UDim2.new(0, 5, 0.5, 0)
+pingLabel.BackgroundTransparency = 1
+pingLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+pingLabel.Text = "Ping: 0 ms"
+pingLabel.TextSize = 14
+pingLabel.Font = Enum.Font.GothamBold
+pingLabel.TextXAlignment = Enum.TextXAlignment.Left
+pingLabel.Parent = statsFrame
+
+-- FPS счётчик
+local fps = 0
+local lastFpsUpdate = tick()
+
+RunService.RenderStepped:Connect(function()
+    fps = fps + 1
+    if tick() - lastFpsUpdate >= 1 then
+        fpsLabel.Text = "FPS: " .. fps
+        fps = 0
+        lastFpsUpdate = tick()
     end
 end)
 
+-- Ping счётчик
+RunService.Heartbeat:Connect(function()
+    local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+    pingLabel.Text = "Ping: " .. math.floor(ping) .. " ms"
+end)
+
+-- ====== CROSSHAIR ======
 local crosshairGui = Instance.new("ScreenGui")
 crosshairGui.Name = "CrosshairGUI"
 crosshairGui.ResetOnSpawn = false
 crosshairGui.IgnoreGuiInset = true
-crosshairGui.DisplayOrder = 999998
+crosshairGui.DisplayOrder = 999997
 crosshairGui.Parent = CoreGui
 
 crosshair = Instance.new("TextLabel")
@@ -563,11 +617,12 @@ crosshair.TextStrokeColor3 = currentColor
 crosshair.Visible = false
 crosshair.Parent = crosshairGui
 
+-- ====== AIM CIRCLE ======
 local aimGui = Instance.new("ScreenGui")
 aimGui.Name = "AimbotGUI"
 aimGui.ResetOnSpawn = false
 aimGui.IgnoreGuiInset = true
-aimGui.DisplayOrder = 999997
+aimGui.DisplayOrder = 999996
 aimGui.Parent = CoreGui
 
 aimCircle = Instance.new("Frame")
@@ -597,7 +652,40 @@ local uc2 = Instance.new("UICorner")
 uc2.CornerRadius = UDim.new(1,0)
 uc2.Parent = aimInnerCircle
 
--- ====== NOCLIP ======
+-- ============================================================
+-- ====== FPS BOOST ===========================================
+-- ============================================================
+function toggleFPSBoost(state)
+    fpsBoostEnabled = state
+    if state then
+        savedGlobalShadows = Lighting.GlobalShadows
+        Lighting.GlobalShadows = false
+        
+        originalMaterials = {}
+        for _, v in pairs(workspace:GetDescendants()) do
+            if v:IsA("BasePart") then
+                originalMaterials[v] = v.Material
+                v.Material = Enum.Material.Plastic
+            end
+        end
+        fpsBtn.Text = "◈ FPS Boost [ON]"
+    else
+        Lighting.GlobalShadows = savedGlobalShadows
+        
+        for part, mat in pairs(originalMaterials) do
+            if part and part.Parent then
+                part.Material = mat
+            end
+        end
+        originalMaterials = {}
+        fpsBtn.Text = "◈ FPS Boost [OFF]"
+    end
+    updateUITheme()
+end
+
+-- ============================================================
+-- ====== NOCLIP ==============================================
+-- ============================================================
 local noclipLoop = nil
 local noclipConnection = nil
 
@@ -652,45 +740,6 @@ function stopNoclip()
             end
         end
     end
-end
-
--- ============================================================
--- ====== NIGHTVISION (УБИРАЕТ ТЕМНОТУ ПОЛНОСТЬЮ) =============
--- ============================================================
-function startNV()
-    if nvConn then return end
-    savedBrightness = Lighting.Brightness
-    savedAmbient = Lighting.Ambient
-    savedOutdoorAmbient = Lighting.OutdoorAmbient
-    savedClockTime = Lighting.ClockTime
-    savedFogStart = Lighting.FogStart
-    savedFogEnd = Lighting.FogEnd
-    savedGlobalShadows = Lighting.GlobalShadows
-    
-    nvConn = RunService.RenderStepped:Connect(function()
-        if not nightVisionEnabled then return end
-        Lighting.Brightness = 4
-        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-        Lighting.ClockTime = 14
-        Lighting.FogStart = 0
-        Lighting.FogEnd = 1e9
-        Lighting.GlobalShadows = false
-    end)
-end
-
-function stopNV()
-    if nvConn then
-        nvConn:Disconnect()
-        nvConn = nil
-    end
-    Lighting.Brightness = savedBrightness
-    Lighting.Ambient = savedAmbient
-    Lighting.OutdoorAmbient = savedOutdoorAmbient
-    Lighting.ClockTime = savedClockTime
-    Lighting.FogStart = savedFogStart
-    Lighting.FogEnd = savedFogEnd
-    Lighting.GlobalShadows = savedGlobalShadows
 end
 
 -- ====== ESP ======
@@ -1027,13 +1076,17 @@ end
 startTriggerLoop()
 
 -- ============================================================
--- ====== АИМБОТ (НЕ ВИДИТ ЧЕРЕЗ СТЕНЫ + СБРОС ЦЕЛИ) =========
+-- ====== АИМБОТ (60М + НЕ ВИДИТ СТЕНЫ + СБРОС ЦЕЛИ) =========
 -- ============================================================
 local function isTargetVisible(targetPart)
     if not targetPart then return false end
     local origin = camera.CFrame.Position
     local direction = (targetPart.Position - origin).Unit
     local distance = (targetPart.Position - origin).Magnitude
+    
+    if distance > MAX_AIM_DISTANCE then
+        return false
+    end
     
     local raycastParams = RaycastParams.new()
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
@@ -1121,10 +1174,23 @@ end
 if aimLoop then aimLoop:Disconnect() end
 startAimLoop()
 
+-- ====== РАДУЖНАЯ ТЕМА ======
+local rainbowLoop = RunService.Heartbeat:Connect(function(deltaTime)
+    rainbowTimer = rainbowTimer + deltaTime
+    if rainbowTimer >= 0.08 then
+        rainbowTimer = 0
+        local theme = themes[currentThemeIndex]
+        if theme and theme.name == "Rainbow" then
+            getThemeColors()
+            updateUITheme()
+        end
+    end
+end)
+
 -- ====== ОЧИСТКА ======
 local function cleanAll()
     stopESP()
-    stopNV()
+    toggleFPSBoost(false)
     stopNoclip()
     if aimLoop then aimLoop:Disconnect(); aimLoop = nil end
     if triggerLoop then triggerLoop:Disconnect(); triggerLoop = nil end
@@ -1141,7 +1207,7 @@ end)
 
 updateThemeLabel()
 
-print("✅ GIDRAXIOD загружен. Нажмите G для меню.")
-print("✅ Аимбот НЕ ВИДИТ через стены и СБРАСЫВАЕТ цель при уходе за стену!")
-print("✅ Night Vision полностью убирает темноту.")
-print("❌ Invisibility удалён из меню.")
+print("✅ GIDRAXIOD загружен. Нажмите G или INSERT для меню.")
+print("✅ FPS BOOST: отключает тени и меняет материалы на Plastic")
+print("✅ Счётчик FPS и Ping в левом верхнем углу")
+print("❌ Night Vision удалён")

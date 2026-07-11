@@ -1,5 +1,5 @@
 -- ============================================================
--- GIDRAXIOD - С FPS BOOST (СЧЁТЧИК В ЛЕВОМ ВЕРХНЕМ УГЛУ)
+-- GIDRAXIOD - АИМБОТ НЕ ВИДИТ ДАЖЕ СКВОЗНЫЕ ПРЕДМЕТЫ
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -24,7 +24,6 @@ local aimTarget = nil
 local maxFOV = 500
 local aimPart = "Head"
 local lastTriggerTime = 0
-local MAX_AIM_DISTANCE = 60
 
 -- ====== ESP ======
 local espObjects = {}
@@ -1076,7 +1075,7 @@ end
 startTriggerLoop()
 
 -- ============================================================
--- ====== АИМБОТ (60М + НЕ ВИДИТ СТЕНЫ + СБРОС ЦЕЛИ) =========
+-- ====== АИМБОТ (НЕ ВИДИТ ДАЖЕ СКВОЗНЫЕ ПРЕДМЕТЫ) ============
 -- ============================================================
 local function isTargetVisible(targetPart)
     if not targetPart then return false end
@@ -1084,28 +1083,55 @@ local function isTargetVisible(targetPart)
     local direction = (targetPart.Position - origin).Unit
     local distance = (targetPart.Position - origin).Magnitude
     
-    if distance > MAX_AIM_DISTANCE then
+    -- 60 МЕТРОВ (1 студия = 0.28 метра)
+    if distance * 0.28 > 60 then
         return false
     end
     
+    -- ПЕРВЫЙ ЛУЧ - ПРОВЕРЯЕМ, ЧТО МЕЖДУ НАМИ
     local raycastParams = RaycastParams.new()
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
     raycastParams.FilterDescendantsInstances = {localPlayer.Character}
     raycastParams.IgnoreWater = true
     
     local result = Workspace:Raycast(origin, direction * distance, raycastParams)
-    if result then
-        local hit = result.Instance
-        local targetChar = targetPart.Parent
-        while targetChar and targetChar ~= Workspace do
-            if hit:IsDescendantOf(targetChar) then
-                return true
-            end
-            targetChar = targetChar.Parent
-        end
-        return false
+    
+    -- ЕСЛИ НИЧЕГО НЕ НАШЛИ - ЦЕЛЬ ВИДИМА (НО ЭТО НЕ ТОЧНО ДЛЯ СКВОЗНЫХ)
+    if not result then
+        return true
     end
-    return true
+    
+    -- ПРОВЕРЯЕМ, ЧТО МЫ ПОПАЛИ В ЦЕЛЬ
+    local hit = result.Instance
+    local targetChar = targetPart.Parent
+    while targetChar and targetChar ~= Workspace do
+        if hit:IsDescendantOf(targetChar) then
+            return true
+        end
+        targetChar = targetChar.Parent
+    end
+    
+    -- ЕСЛИ МЫ НЕ ПОПАЛИ В ЦЕЛЬ - ПРОВЕРЯЕМ ТОЛЩИНУ ПРЕПЯТСТВИЯ
+    -- ДЛЯ ЭТОГО ПУСКАЕМ ЛУЧ ИЗ ТОЧКИ ЦЕЛИ В НАС
+    local reverseParams = RaycastParams.new()
+    reverseParams.FilterType = Enum.RaycastFilterType.Blacklist
+    reverseParams.FilterDescendantsInstances = {localPlayer.Character, targetPart.Parent}
+    reverseParams.IgnoreWater = true
+    
+    local reverseResult = Workspace:Raycast(targetPart.Position, -direction * distance, reverseParams)
+    
+    -- ЕСЛИ В ОБРАТНУЮ СТОРОНУ ЛУЧ ПРОШЁЛ - ЗНАЧИТ ПРЕПЯТСТВИЕ ТОНКОЕ (СКВОЗНОЕ)
+    if not reverseResult then
+        return false -- НЕ ВИДИМ (сквозной предмет)
+    end
+    
+    -- ЕСЛИ В ОБРАТНУЮ СТОРОНУ ЛУЧ УПЁРСЯ - ЗНАЧИТ ПРЕПЯТСТВИЕ ТОЛСТОЕ
+    local reverseHit = reverseResult.Instance
+    if reverseHit:IsDescendantOf(hit.Parent) then
+        return false -- ЭТО ТО ЖЕ ПРЕПЯТСТВИЕ - НЕ ВИДИМ
+    end
+    
+    return false -- ПО УМОЛЧАНИЮ - НЕ ВИДИМ
 end
 
 local function getClosestTarget(center)
@@ -1208,6 +1234,6 @@ end)
 updateThemeLabel()
 
 print("✅ GIDRAXIOD загружен. Нажмите G или INSERT для меню.")
+print("✅ Аимбот: 60 МЕТРОВ, НЕ ВИДИТ ДАЖЕ СКВОЗНЫЕ ПРЕДМЕТЫ!")
 print("✅ FPS BOOST: отключает тени и меняет материалы на Plastic")
 print("✅ Счётчик FPS и Ping в левом верхнем углу")
-print("❌ Night Vision удалён")

@@ -1,5 +1,5 @@
 -- ============================================================
--- GIDRAXIOD - АИМБОТ НЕ ВИДИТ ДАЖЕ СКВОЗНЫЕ ПРЕДМЕТЫ
+-- GIDRAXIOD - АИМБОТ 60М + НЕ ВИДИТ СТЕНЫ
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -21,7 +21,6 @@ local noclipEnabled = false
 local fovRadius = 120
 local smoothness = 0.85
 local aimTarget = nil
-local maxFOV = 500
 local aimPart = "Head"
 local lastTriggerTime = 0
 
@@ -33,7 +32,6 @@ local espLoop = nil
 local updateTimer = 0
 local rescanTimer = 0
 local RESCAN_INTERVAL = 2.5
-local playerConnections = {}
 
 -- ====== FPS BOOST ======
 local originalMaterials = {}
@@ -75,7 +73,7 @@ local function getThemeColors()
     return currentColor, currentGlow, currentDim
 end
 
--- ====== GUI (МЕНЮ) ======
+-- ====== GUI ======
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "GIDRAX_Menu"
 screenGui.ResetOnSpawn = false
@@ -147,11 +145,7 @@ layout.Changed:Connect(function()
     scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 30)
 end)
 
-local uiElements = {
-    buttons = {},
-    sliders = {},
-    labels = {},
-}
+local uiElements = {buttons = {}, sliders = {}, labels = {}}
 
 local function updateUITheme()
     if not themeChanged then return end
@@ -356,7 +350,7 @@ local function createSlider(labelText, getValue, setValue, min, max, format)
     return container
 end
 
--- ====== КНОПКИ МЕНЮ ======
+-- КНОПКИ
 local espBtn = createButton("ESP", function() return espEnabled end, function(v)
     espEnabled = v
     if v then startESP() else stopESP() end
@@ -426,6 +420,7 @@ aimTargetBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+-- ТЕМЫ
 local themeContainer = Instance.new("Frame")
 themeContainer.Size = UDim2.new(1, -10, 0, 40)
 themeContainer.BackgroundTransparency = 1
@@ -503,7 +498,6 @@ closeBtn.MouseButton1Click:Connect(function()
     mainFrame.Visible = false
 end)
 
--- ОТКРЫТИЕ МЕНЮ ПО G И INSERT
 toggleButton.MouseButton1Click:Connect(function()
     mainFrame.Visible = not mainFrame.Visible
     getThemeColors()
@@ -533,7 +527,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- ====== СЧЁТЧИК FPS И PING (ЛЕВЫЙ ВЕРХНИЙ УГОЛ) ======
+-- СЧЁТЧИК FPS И PING
 local statsGui = Instance.new("ScreenGui")
 statsGui.Name = "StatsDisplay"
 statsGui.ResetOnSpawn = false
@@ -576,10 +570,8 @@ pingLabel.Font = Enum.Font.GothamBold
 pingLabel.TextXAlignment = Enum.TextXAlignment.Left
 pingLabel.Parent = statsFrame
 
--- FPS счётчик
 local fps = 0
 local lastFpsUpdate = tick()
-
 RunService.RenderStepped:Connect(function()
     fps = fps + 1
     if tick() - lastFpsUpdate >= 1 then
@@ -589,13 +581,12 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Ping счётчик
 RunService.Heartbeat:Connect(function()
     local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
     pingLabel.Text = "Ping: " .. math.floor(ping) .. " ms"
 end)
 
--- ====== CROSSHAIR ======
+-- CROSSHAIR
 local crosshairGui = Instance.new("ScreenGui")
 crosshairGui.Name = "CrosshairGUI"
 crosshairGui.ResetOnSpawn = false
@@ -616,7 +607,7 @@ crosshair.TextStrokeColor3 = currentColor
 crosshair.Visible = false
 crosshair.Parent = crosshairGui
 
--- ====== AIM CIRCLE ======
+-- AIM CIRCLE
 local aimGui = Instance.new("ScreenGui")
 aimGui.Name = "AimbotGUI"
 aimGui.ResetOnSpawn = false
@@ -652,14 +643,13 @@ uc2.CornerRadius = UDim.new(1,0)
 uc2.Parent = aimInnerCircle
 
 -- ============================================================
--- ====== FPS BOOST ===========================================
+-- FPS BOOST
 -- ============================================================
 function toggleFPSBoost(state)
     fpsBoostEnabled = state
     if state then
         savedGlobalShadows = Lighting.GlobalShadows
         Lighting.GlobalShadows = false
-        
         originalMaterials = {}
         for _, v in pairs(workspace:GetDescendants()) do
             if v:IsA("BasePart") then
@@ -670,7 +660,6 @@ function toggleFPSBoost(state)
         fpsBtn.Text = "◈ FPS Boost [ON]"
     else
         Lighting.GlobalShadows = savedGlobalShadows
-        
         for part, mat in pairs(originalMaterials) do
             if part and part.Parent then
                 part.Material = mat
@@ -683,7 +672,7 @@ function toggleFPSBoost(state)
 end
 
 -- ============================================================
--- ====== NOCLIP ==============================================
+-- NOCLIP
 -- ============================================================
 local noclipLoop = nil
 local noclipConnection = nil
@@ -700,8 +689,7 @@ function startNoclip()
         for _, part in pairs(char:GetDescendants()) do
             setNoclip(part)
         end
-    end
-    noclipConnection = localPlayer.CharacterAdded:Connect(function(newChar)
+    end    noclipConnection = localPlayer.CharacterAdded:Connect(function(newChar)
         task.wait(0.1)
         for _, part in pairs(newChar:GetDescendants()) do
             if part:IsA("BasePart") then
@@ -741,7 +729,9 @@ function stopNoclip()
     end
 end
 
--- ====== ESP ======
+-- ============================================================
+-- ESP
+-- ============================================================
 local function isVisible(part)
     if not part or not part.Parent then return false end
     local origin = camera.CFrame.Position
@@ -764,22 +754,6 @@ local function isVisible(part)
         return false
     end
     return true
-end
-
-local function getAllTargets()
-    local targets = {}
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= localPlayer then
-            local char = player.Character
-            if char and char.Parent then
-                local humanoid = char:FindFirstChildOfClass("Humanoid")
-                if humanoid and humanoid.Health > 0 then
-                    table.insert(targets, char)
-                end
-            end
-        end
-    end
-    return targets
 end
 
 local function getTargetPart(character)
@@ -871,11 +845,10 @@ local function addCharacterESP(char)
     }
     trackedCharacters[char] = true
 
-    local function onDeath()
-        removeCharacterESP(char)
-    end
     if humanoid then
-        humanoid.Died:Connect(onDeath)
+        humanoid.Died:Connect(function()
+            removeCharacterESP(char)
+        end)
     end
     char.AncestryChanged:Connect(function(_, parent)
         if not parent then
@@ -936,26 +909,11 @@ local function updateESPInfo()
                 continue
             end
             local dist = (root.Position - camPos).Magnitude
-            local hpPercent = (health / maxHealth) * 100
             
-            local hpColor
-            if hpPercent > 60 then hpColor = Color3.fromRGB(0, 255, 0)
-            elseif hpPercent > 30 then hpColor = Color3.fromRGB(255, 255, 0)
-            else hpColor = Color3.fromRGB(255, 0, 0) end
-            
-            local name = "NPC"
-            local player = Players:GetPlayerFromCharacter(char)
-            if player then name = player.Name end
-            
-            data.label.Text = string.format("%s\n<font color='rgb(%d,%d,%d)'>%.0f/%.0f HP</font>\n<font color='rgb(%d,%d,%d)'>%.1f m</font>",
-                name,
-                hpColor.R*255, hpColor.G*255, hpColor.B*255, health, maxHealth,
-                currentGlow.R*255, currentGlow.G*255, currentGlow.B*255, dist/10)
-
-            if data.highlight then
-                data.highlight.FillColor = currentColor
-                data.highlight.OutlineColor = currentGlow
-            end
+            data.label.Text = string.format("%s\nHP: %.0f/%.0f\n%.1f m",
+                "Player",
+                health, maxHealth,
+                dist/10)
         end
     end
 end
@@ -972,37 +930,6 @@ function startESP()
     Players.PlayerRemoving:Connect(function(player)
         if player.Character then
             removeCharacterESP(player.Character)
-        end
-    end)
-    Workspace.DescendantAdded:Connect(function(descendant)
-        if not espEnabled then return end
-        if descendant:IsA("Model") and descendant ~= localPlayer.Character then
-            local isPlayerModel = false
-            for _, player in pairs(Players:GetPlayers()) do
-                if player.Character == descendant then
-                    isPlayerModel = true
-                    break
-                end
-            end
-            if isPlayerModel then return end
-            local humanoid = descendant:FindFirstChildOfClass("Humanoid")
-            if humanoid and humanoid.Health > 0 then
-                if not espObjects[descendant] then
-                    addCharacterESP(descendant)
-                end
-                return
-            end
-            local hp = descendant:FindFirstChild("Health") or descendant:FindFirstChild("HP")
-            if hp and hp.Value > 0 then
-                if not espObjects[descendant] then
-                    addCharacterESP(descendant)
-                end
-            end
-        end
-    end)
-    Workspace.DescendantRemoving:Connect(function(descendant)
-        if descendant:IsA("Model") and espObjects[descendant] then
-            removeCharacterESP(descendant)
         end
     end)
     espLoop = RunService.Heartbeat:Connect(function(deltaTime)
@@ -1031,7 +958,9 @@ function stopESP()
     trackedCharacters = {}
 end
 
--- ====== TRIGGERBOT ======
+-- ============================================================
+-- TRIGGERBOT
+-- ============================================================
 local function getTargetAtCrosshair()
     local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
     local closest, dist = nil, math.huge
@@ -1075,35 +1004,38 @@ end
 startTriggerLoop()
 
 -- ============================================================
--- ====== АИМБОТ (НЕ ВИДИТ ДАЖЕ СКВОЗНЫЕ ПРЕДМЕТЫ) ============
+-- АИМБОТ (60 МЕТРОВ, НЕ ВИДИТ СТЕНЫ)
 -- ============================================================
 local function isTargetVisible(targetPart)
     if not targetPart then return false end
-    local origin = camera.CFrame.Position
-    local direction = (targetPart.Position - origin).Unit
-    local distance = (targetPart.Position - origin).Magnitude
     
-    -- 60 МЕТРОВ (1 студия = 0.28 метра)
-    if distance * 0.28 > 60 then
+    local origin = camera.CFrame.Position
+    local targetPos = targetPart.Position
+    local direction = (targetPos - origin).Unit
+    local distance = (targetPos - origin).Magnitude
+    
+    -- ПЕРЕВОДИМ В МЕТРЫ (1 студия = 0.28 метра)
+    local distanceInMeters = distance * 0.28
+    
+    -- ЕСЛИ БОЛЬШЕ 60 МЕТРОВ - НЕ ВИДИМ
+    if distanceInMeters > 60 then
         return false
     end
     
-    -- ПЕРВЫЙ ЛУЧ - ПРОВЕРЯЕМ, ЧТО МЕЖДУ НАМИ
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-    raycastParams.FilterDescendantsInstances = {localPlayer.Character}
-    raycastParams.IgnoreWater = true
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+    params.FilterDescendantsInstances = {localPlayer.Character}
+    params.IgnoreWater = true
     
-    local result = Workspace:Raycast(origin, direction * distance, raycastParams)
+    local result = Workspace:Raycast(origin, direction * distance, params)
     
-    -- ЕСЛИ НИЧЕГО НЕ НАШЛИ - ЦЕЛЬ ВИДИМА (НО ЭТО НЕ ТОЧНО ДЛЯ СКВОЗНЫХ)
     if not result then
         return true
     end
     
-    -- ПРОВЕРЯЕМ, ЧТО МЫ ПОПАЛИ В ЦЕЛЬ
     local hit = result.Instance
     local targetChar = targetPart.Parent
+    
     while targetChar and targetChar ~= Workspace do
         if hit:IsDescendantOf(targetChar) then
             return true
@@ -1111,96 +1043,87 @@ local function isTargetVisible(targetPart)
         targetChar = targetChar.Parent
     end
     
-    -- ЕСЛИ МЫ НЕ ПОПАЛИ В ЦЕЛЬ - ПРОВЕРЯЕМ ТОЛЩИНУ ПРЕПЯТСТВИЯ
-    -- ДЛЯ ЭТОГО ПУСКАЕМ ЛУЧ ИЗ ТОЧКИ ЦЕЛИ В НАС
-    local reverseParams = RaycastParams.new()
-    reverseParams.FilterType = Enum.RaycastFilterType.Blacklist
-    reverseParams.FilterDescendantsInstances = {localPlayer.Character, targetPart.Parent}
-    reverseParams.IgnoreWater = true
-    
-    local reverseResult = Workspace:Raycast(targetPart.Position, -direction * distance, reverseParams)
-    
-    -- ЕСЛИ В ОБРАТНУЮ СТОРОНУ ЛУЧ ПРОШЁЛ - ЗНАЧИТ ПРЕПЯТСТВИЕ ТОНКОЕ (СКВОЗНОЕ)
-    if not reverseResult then
-        return false -- НЕ ВИДИМ (сквозной предмет)
-    end
-    
-    -- ЕСЛИ В ОБРАТНУЮ СТОРОНУ ЛУЧ УПЁРСЯ - ЗНАЧИТ ПРЕПЯТСТВИЕ ТОЛСТОЕ
-    local reverseHit = reverseResult.Instance
-    if reverseHit:IsDescendantOf(hit.Parent) then
-        return false -- ЭТО ТО ЖЕ ПРЕПЯТСТВИЕ - НЕ ВИДИМ
-    end
-    
-    return false -- ПО УМОЛЧАНИЮ - НЕ ВИДИМ
+    return false
 end
 
 local function getClosestTarget(center)
-    local closest, dist = nil, math.huge
+    local closest, closestDist = nil, math.huge
+    
     for char, _ in pairs(trackedCharacters) do
-        if not char.Parent then
+        if not char or not char.Parent then
             removeCharacterESP(char)
             continue
         end
+        
         if Players:GetPlayerFromCharacter(char) == localPlayer then
             continue
         end
+        
         local targetPart = getTargetPart(char)
-        if targetPart and targetPart:IsA("BasePart") then
-            if not isTargetVisible(targetPart) then
-                continue
-            end
-            local pos, vis = camera:WorldToViewportPoint(targetPart.Position)
-            if vis then
-                local mag = (Vector2.new(pos.X,pos.Y) - center).Magnitude
-                if mag <= fovRadius and mag < dist then
-                    closest = targetPart
-                    dist = mag
+        if not targetPart or not targetPart:IsA("BasePart") then
+            continue
+        end
+        
+        -- ПРОВЕРЯЕМ ВИДИМОСТЬ (ВКЛЮЧАЯ ДИСТАНЦИЮ 60М)
+        if not isTargetVisible(targetPart) then
+            continue
+        end
+        
+        local pos, onScreen = camera:WorldToViewportPoint(targetPart.Position)
+        if not onScreen then
+            continue
+        end
+        
+        local mag = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+        if mag <= fovRadius and mag < closestDist then
+            closest = targetPart
+            closestDist = mag
+        end
+    end
+    
+    return closest
+end
+
+-- ПЕРЕЗАПУСКАЕМ АИМЛУП
+if aimLoop then aimLoop:Disconnect() end
+
+aimLoop = RunService.RenderStepped:Connect(function()
+    if not aimEnabled then
+        aimTarget = nil
+        return
+    end
+    
+    local center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+    
+    -- ПРОВЕРЯЕМ ТЕКУЩУЮ ЦЕЛЬ
+    local targetValid = false
+    if aimTarget and aimTarget.Parent then
+        if isTargetVisible(aimTarget) then
+            local pos, onScreen = camera:WorldToViewportPoint(aimTarget.Position)
+            if onScreen then
+                local mag = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                if mag <= fovRadius then
+                    targetValid = true
                 end
             end
         end
     end
-    return closest
-end
+    
+    -- ЕСЛИ ЦЕЛЬ НЕВАЛИДНА - ИЩЕМ НОВУЮ
+    if not targetValid then
+        aimTarget = getClosestTarget(center)
+    end
+    
+    -- НАВОДИМСЯ
+    if aimTarget then
+        local goal = CFrame.new(camera.CFrame.Position, aimTarget.Position)
+        camera.CFrame = camera.CFrame:Lerp(goal, smoothness)
+    end
+end)
 
-local aimLoop = nil
-function startAimLoop()
-    if aimLoop then return end
-    aimLoop = RunService.RenderStepped:Connect(function()
-        if aimEnabled then
-            local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
-            
-            local targetIsValid = false
-            if aimTarget and aimTarget.Parent then
-                if isTargetVisible(aimTarget) then
-                    local pos, vis = camera:WorldToViewportPoint(aimTarget.Position)
-                    if vis and (Vector2.new(pos.X,pos.Y) - center).Magnitude <= fovRadius then
-                        targetIsValid = true
-                    end
-                end
-            end
-            
-            if not targetIsValid then
-                aimTarget = nil
-            end
-            
-            if not aimTarget then
-                aimTarget = getClosestTarget(center)
-            end
-            
-            if aimTarget then
-                local goal = CFrame.new(camera.CFrame.Position, aimTarget.Position)
-                camera.CFrame = camera.CFrame:Lerp(goal, smoothness)
-            end
-        else
-            aimTarget = nil
-        end
-    end)
-end
-
-if aimLoop then aimLoop:Disconnect() end
-startAimLoop()
-
--- ====== РАДУЖНАЯ ТЕМА ======
+-- ============================================================
+-- РАДУЖНАЯ ТЕМА
+-- ============================================================
 local rainbowLoop = RunService.Heartbeat:Connect(function(deltaTime)
     rainbowTimer = rainbowTimer + deltaTime
     if rainbowTimer >= 0.08 then
@@ -1213,7 +1136,9 @@ local rainbowLoop = RunService.Heartbeat:Connect(function(deltaTime)
     end
 end)
 
--- ====== ОЧИСТКА ======
+-- ============================================================
+-- ОЧИСТКА
+-- ============================================================
 local function cleanAll()
     stopESP()
     toggleFPSBoost(false)
@@ -1234,6 +1159,6 @@ end)
 updateThemeLabel()
 
 print("✅ GIDRAXIOD загружен. Нажмите G или INSERT для меню.")
-print("✅ Аимбот: 60 МЕТРОВ, НЕ ВИДИТ ДАЖЕ СКВОЗНЫЕ ПРЕДМЕТЫ!")
-print("✅ FPS BOOST: отключает тени и меняет материалы на Plastic")
+print("✅ Аимбот: 60 МЕТРОВ, НЕ ВИДИТ стены!")
+print("✅ FPS BOOST: отключает тени и меняет материалы")
 print("✅ Счётчик FPS и Ping в левом верхнем углу")
